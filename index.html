@@ -233,10 +233,17 @@
   .callout.tip{border-left-color:var(--navy); background:#F5F4F9}
   .callout.tip .callout-label{color:var(--navy)}
 
-  figure{margin:20px 0}
-  figure img{width:100%; display:block; border-radius:12px; border:1px solid var(--line); box-shadow:var(--sh-2); background:var(--card); cursor:zoom-in}
-  figcaption{font-size:12.5px; color:var(--muted); margin-top:10px; font-family:var(--mono); letter-spacing:.03em}
-  .step-imgs{display:flex; flex-direction:column; gap:14px; margin-top:12px}
+  figure{margin:20px -34px}
+  figure img{width:100%; display:block; border-radius:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); box-shadow:none; background:var(--card); cursor:zoom-in; min-height:60px; object-fit:contain}
+  figcaption{font-size:12.5px; color:var(--muted); margin-top:8px; padding:0 34px; font-family:var(--mono); letter-spacing:.03em}
+  .step-imgs{display:flex; flex-direction:column; gap:0; margin:16px -34px 0}
+  .step-imgs figure{margin:0 0 2px}
+  .step-imgs figure:last-child{margin-bottom:0}
+  @media (max-width:900px){
+    figure{margin:16px -20px}
+    figcaption{padding:0 20px}
+    .step-imgs{margin:12px -20px 0}
+  }
 
   /* Lightbox */
   .lb{position:fixed;inset:0;background:rgba(20,18,40,.92);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
@@ -526,7 +533,15 @@ function renderNav(){
   });
   $('#nav').innerHTML = html;
 }
-function go(view, id){ state.view=view; state.articleId=id||null; state.editing=false; closeRail(); window.scrollTo(0,0); render(); }
+function go(view, id, pushHistory=true){
+  state.view=view; state.articleId=id||null; state.editing=false;
+  closeRail(); window.scrollTo(0,0);
+  if(pushHistory){
+    const url = view==='article' && id ? '#'+id : '#';
+    history.pushState({view, id:id||null}, '', url);
+  }
+  render();
+}
 
 /* ---------------- Pesquisa ---------------- */
 const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -988,6 +1003,9 @@ $('#burger').addEventListener('click', () => { rail.classList.toggle('open'); sc
 scrim.addEventListener('click', closeRail);
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closeRail(); });
 
+// Registar o estado inicial no histórico
+history.replaceState({view:'home', id:null}, '', location.href);
+
 async function loadData(){
   state.loading = true; render();
   try {
@@ -1014,6 +1032,30 @@ async function loadData(){
     state.loading = false; render();
   } catch(e){ state.loading = false; renderError(e.message); }
 }
+
+// Registar o estado inicial no histórico
+history.replaceState({view:'home', id:null}, '', location.href);
+
+// Botão voltar/avançar do browser
+window.addEventListener('popstate', e => {
+  if(e.state && e.state.view === 'article' && e.state.id){
+    go(e.state.view, e.state.id, false);
+  } else {
+    go('home', null, false);
+  }
+});
+
+// Ao abrir o site com um URL que já tem #slug, navegar para esse artigo
+(function(){
+  const hash = location.hash.replace('#','');
+  if(!hash) return;
+  const waitAndGo = () => {
+    if(state.loading){ setTimeout(waitAndGo, 100); return; }
+    const a = findArticle(hash);
+    if(a) go('article', a.id, false);
+  };
+  setTimeout(waitAndGo, 200);
+})();
 
 loadData();
 
