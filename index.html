@@ -205,10 +205,7 @@
   .body a{color:var(--navy); text-decoration:underline; text-decoration-color:var(--gold); text-underline-offset:3px}
 
   /* Passos */
-  .steps{list-style:none; margin:30px 0 36px; padding:0; position:relative}
-  .steps::before{content:''; position:absolute; left:17px; top:16px; bottom:16px; width:1px; background:linear-gradient(var(--gold),var(--line))}
-  .step{position:relative; padding:0 0 32px 58px}
-  .step:last-child{padding-bottom:4px}
+  .step{position:relative; padding:0 0 32px 58px; margin:0}
   .step-num{
     position:absolute; left:0; top:-1px; width:35px; height:35px; border-radius:50%;
     background:var(--navy); color:var(--gold);
@@ -236,9 +233,19 @@
   .callout.tip{border-left-color:var(--navy); background:#F5F4F9}
   .callout.tip .callout-label{color:var(--navy)}
 
-  figure{margin:18px 0}
-  figure img{width:100%; display:block; border-radius:12px; border:1px solid var(--line); box-shadow:var(--sh-2); background:var(--card)}
+  figure{margin:20px 0}
+  figure img{width:100%; display:block; border-radius:12px; border:1px solid var(--line); box-shadow:var(--sh-2); background:var(--card); cursor:zoom-in}
   figcaption{font-size:12.5px; color:var(--muted); margin-top:10px; font-family:var(--mono); letter-spacing:.03em}
+  .step-imgs{display:flex; flex-direction:column; gap:14px; margin-top:12px}
+
+  /* Lightbox */
+  .lb{position:fixed;inset:0;background:rgba(20,18,40,.92);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+  .lb img{max-width:100%;max-height:90vh;border-radius:10px;box-shadow:var(--sh-3);object-fit:contain}
+  .lb-close{position:absolute;top:16px;right:20px;background:none;border:0;color:#fff;font-size:28px;line-height:1;cursor:pointer;opacity:.8}
+  .lb-close:hover{opacity:1}
+  .lb-prev,.lb-next{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.12);border:0;color:#fff;font-size:22px;padding:12px 16px;border-radius:10px;cursor:pointer;line-height:1}
+  .lb-prev{left:12px} .lb-next{right:12px}
+  .lb-prev:hover,.lb-next:hover{background:rgba(255,255,255,.22)}
   .img-placeholder{
     width:100%; aspect-ratio:16/9; border-radius:12px; border:1px dashed var(--line);
     background:linear-gradient(135deg,#FCFBF8,#F1EFE8);
@@ -605,29 +612,36 @@ function renderHome(){
 }
 
 /* ---------------- Artigo ---------------- */
-const LABEL = { warn:'Atenção', must:'Obrigatório', dont:'Não fazer', tip:'Dica' };
-
 function renderBlocks(blocks){
-  let steps = [], out = [];
-  const flush = () => {
-    if(!steps.length) return;
-    out.push('<ol class="steps">' + steps.map((b,i) =>
-      `<li class="step"><span class="step-num">${String(i+1).padStart(2,'0')}</span>
-        <h3>${esc(b.title)}</h3><p>${b.text}</p>
-        ${b.img?`<figure><img src="${b.img}" alt="${esc(b.title)}">${b.caption?`<figcaption>${esc(b.caption)}</figcaption>`:''}</figure>`:''}
-      </li>`).join('') + '</ol>');
-    steps = [];
-  };
-  blocks.forEach(b => {
-    if(b.type === 'step'){ steps.push(b); return; }
-    flush();
-    if(b.type === 'text') out.push(b.html);
-    if(b.type === 'callout') out.push(`<div class="callout ${b.variant}"><span class="callout-label">${LABEL[b.variant]}</span><p>${b.text}</p></div>`);
-    if(b.type === 'image') out.push(b.img
-      ? `<figure><img src="${b.img}" alt="${esc(b.caption||'')}">${b.caption?`<figcaption>${esc(b.caption)}</figcaption>`:''}</figure>`
-      : `<figure><div class="img-placeholder">Sem imagem</div></figure>`);
-  });
-  flush();
+  const LABEL_MAP = { warn:'Atenção', must:'Obrigatório', dont:'Não fazer', tip:'Dica' };
+  let stepCount = 0;
+  const imgTag = (url, caption, title) =>
+    `<figure><img src="${esc(url)}" alt="${esc(caption||title||'')}" data-lb="${esc(url)}" loading="lazy">${caption?`<figcaption>${esc(caption)}</figcaption>`:''}</figure>`;
+
+  const out = blocks.map(b => {
+    if(b.type === 'text') return b.html;
+
+    if(b.type === 'callout')
+      return `<div class="callout ${b.variant}"><span class="callout-label">${LABEL_MAP[b.variant]}</span><p>${b.text}</p></div>`;
+
+    if(b.type === 'image'){
+      const imgs = b.images && b.images.length ? b.images : (b.img ? [{url:b.img, caption:b.caption||''}] : []);
+      if(!imgs.length) return `<figure><div class="img-placeholder">Sem imagem</div></figure>`;
+      return `<div class="step-imgs">${imgs.map(im => imgTag(im.url, im.caption, '')).join('')}</div>`;
+    }
+
+    if(b.type === 'step'){
+      stepCount++;
+      const imgs = b.images && b.images.length ? b.images
+                 : (b.img ? [{url:b.img, caption:b.caption||''}] : []);
+      const gallery = imgs.length
+        ? `<div class="step-imgs">${imgs.map(im => imgTag(im.url, im.caption, b.title)).join('')}</div>` : '';
+      return `<div class="step"><span class="step-num">${String(stepCount).padStart(2,'0')}</span>
+        <h3>${esc(b.title)}</h3><p>${b.text}</p>${gallery}</div>`;
+    }
+    return '';
+  }).filter(Boolean);
+
   return out.join('') || '<p style="color:var(--muted)">Esta página ainda está vazia.</p>';
 }
 
@@ -707,9 +721,8 @@ function editBlock(b,i,total){
       <input class="field title" data-f="title" data-i="${i}" value="${esc(b.title)}">
       <label class="ed-label" style="margin-top:14px">Explicação</label>${rtToolbar()}
       <div class="rt" contenteditable="true" data-rt="${i}">${b.text}</div>
-      <label class="ed-label" style="margin-top:14px">Imagem do passo</label>${imgField(b,i)}`;
-  if(b.type === 'image') inner = `${imgField(b,i)}<label class="ed-label" style="margin-top:14px">Legenda</label>
-      <input class="field" data-f="caption" data-i="${i}" value="${esc(b.caption||'')}" placeholder="opcional">`;
+      <label class="ed-label" style="margin-top:14px">Imagens do passo</label>${imgField(b,i)}`;
+  if(b.type === 'image') inner = imgField(b,i);
   if(b.type === 'callout') inner = `<label class="ed-label">Tipo de aviso</label>
       <select class="field" data-f="variant" data-i="${i}" style="max-width:230px">
         ${VARIANTS.map(([v,l]) => `<option value="${v}" ${b.variant===v?'selected':''}>${l}</option>`).join('')}</select>
@@ -729,10 +742,23 @@ const rtToolbar = () => `<div class="rt-toolbar">
   <button class="rt-btn" data-cmd="insertUnorderedList">Lista</button>
   <button class="rt-btn" data-cmd="createLink">Link</button></div>`;
 
-const imgField = (b,i) => b.img
-  ? `<img class="thumb" src="${b.img}" alt=""><div class="ed-row">
-      <button class="btn" data-pick="${i}">Substituir</button><button class="btn" data-rmimg="${i}">Remover</button></div>`
-  : `<div class="drop" data-pick="${i}">Clique para escolher um screenshot</div>`;
+function imgField(b, i){
+  const imgs = b.images && b.images.length ? b.images : (b.img ? [{url:b.img, caption:b.caption||''}] : []);
+  let html = imgs.map((im, j) =>
+    `<div class="ed-block" style="margin-bottom:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden">
+      <img class="thumb" src="${esc(im.url)}" alt="" style="max-height:180px">
+      <div class="ed-body" style="padding:8px 12px">
+        <input class="field" style="font-size:13px;padding:7px 10px" placeholder="Legenda (opcional)"
+          value="${esc(im.caption||'')}" data-imgcap="${i}" data-imgidx="${j}">
+        <div class="ed-row" style="margin-top:6px">
+          <button class="btn" style="font-size:12px;padding:5px 10px" data-replaceimg="${i}" data-imgidx="${j}">Substituir</button>
+          <button class="btn btn-danger" style="font-size:12px;padding:5px 10px" data-rmimg="${i}" data-imgidx="${j}">Remover</button>
+        </div>
+      </div>
+    </div>`).join('');
+  html += `<div class="drop" data-pick="${i}" style="margin-top:6px">+ Adicionar imagem</div>`;
+  return html;
+}
 
 function bindEditor(){
   const a = findArticle(state.articleId);
@@ -760,7 +786,22 @@ function bindEditor(){
     el.addEventListener('input', set); el.addEventListener('change', set);
   });
   content.querySelectorAll('[data-pick]').forEach(el => el.addEventListener('click', () => pickImage(+el.dataset.pick)));
-  content.querySelectorAll('[data-rmimg]').forEach(el => el.addEventListener('click', () => { a.blocks[+el.dataset.rmimg].img = null; renderEditor(); }));
+  content.querySelectorAll('[data-replaceimg]').forEach(el => el.addEventListener('click', () => pickImage(+el.dataset.replaceimg, +el.dataset.imgidx)));
+  content.querySelectorAll('[data-rmimg]').forEach(el => el.addEventListener('click', () => {
+    const a = findArticle(state.articleId);
+    const bi = +el.dataset.rmimg, ji = +el.dataset.imgidx;
+    if(!a.blocks[bi].images) a.blocks[bi].images = [];
+    a.blocks[bi].images.splice(ji, 1);
+    if(!a.blocks[bi].images.length) a.blocks[bi].img = null;
+    renderEditor();
+  }));
+  content.querySelectorAll('[data-imgcap]').forEach(el => el.addEventListener('input', () => {
+    const a = findArticle(state.articleId);
+    const bi = +el.dataset.imgcap, ji = +el.dataset.imgidx;
+    if(!a.blocks[bi].images) a.blocks[bi].images = [];
+    if(a.blocks[bi].images[ji]) a.blocks[bi].images[ji].caption = el.value;
+  }));
+  // rmimg tratado acima com imgidx
   content.querySelectorAll('[data-move]').forEach(el => el.addEventListener('click', () => {
     const i = +el.dataset.i, j = el.dataset.move==='up' ? i-1 : i+1;
     if(j<0 || j>=a.blocks.length) return;
@@ -823,17 +864,22 @@ function bindEditor(){
   });
 }
 
-function pickImage(i){
+function pickImage(i, replaceIdx){
   const a = findArticle(state.articleId);
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = 'image/*';
   inp.onchange = async () => {
     const f = inp.files[0]; if(!f) return;
-    // preview imediato
-    a.blocks[i].img = URL.createObjectURL(f); renderEditor(); toast('A carregar imagem…');
+    const previewUrl = URL.createObjectURL(f);
+    if(!a.blocks[i].images) a.blocks[i].images = a.blocks[i].img ? [{url:a.blocks[i].img, caption:a.blocks[i].caption||''}] : [];
+    if(replaceIdx !== undefined) a.blocks[i].images[replaceIdx] = {url:previewUrl, caption:''};
+    else a.blocks[i].images.push({url:previewUrl, caption:''});
+    renderEditor(); toast('A carregar imagem…');
     try {
       const url = await uploadImage(f);
-      a.blocks[i].img = url; renderEditor(); toast('Imagem guardada');
+      const idx = replaceIdx !== undefined ? replaceIdx : a.blocks[i].images.length - 1;
+      a.blocks[i].images[idx].url = url;
+      renderEditor(); toast('Imagem guardada');
     } catch(e){ toast('Erro no upload: ' + e.message); }
   };
   inp.click();
@@ -970,6 +1016,55 @@ async function loadData(){
 }
 
 loadData();
+
+// ── Lightbox ──────────────────────────────────────────────────────────
+let lbImgs = [], lbIdx = 0;
+function openLightbox(imgs, idx){
+  lbImgs = imgs; lbIdx = idx;
+  let el = document.getElementById('lb');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'lb'; el.className = 'lb';
+    el.innerHTML = `<button class="lb-close" id="lbClose">✕</button>
+      <button class="lb-prev" id="lbPrev">‹</button>
+      <img id="lbImg" src="" alt="">
+      <button class="lb-next" id="lbNext">›</button>`;
+    document.body.appendChild(el);
+    $('#lbClose').onclick = closeLightbox;
+    el.addEventListener('click', e => { if(e.target === el) closeLightbox(); });
+    $('#lbPrev').onclick = () => { lbIdx = (lbIdx - 1 + lbImgs.length) % lbImgs.length; lbShow(); };
+    $('#lbNext').onclick = () => { lbIdx = (lbIdx + 1) % lbImgs.length; lbShow(); };
+    document.addEventListener('keydown', e => {
+      if(!document.getElementById('lb')) return;
+      if(e.key === 'Escape') closeLightbox();
+      if(e.key === 'ArrowLeft') { lbIdx = (lbIdx - 1 + lbImgs.length) % lbImgs.length; lbShow(); }
+      if(e.key === 'ArrowRight') { lbIdx = (lbIdx + 1) % lbImgs.length; lbShow(); }
+    });
+  }
+  lbShow(); el.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function lbShow(){
+  $('#lbImg').src = lbImgs[lbIdx];
+  const hasMultiple = lbImgs.length > 1;
+  $('#lbPrev').style.display = hasMultiple ? '' : 'none';
+  $('#lbNext').style.display = hasMultiple ? '' : 'none';
+}
+function closeLightbox(){
+  const el = document.getElementById('lb');
+  if(el) el.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Delegar cliques nas imagens do artigo para o lightbox
+document.addEventListener('click', e => {
+  const img = e.target.closest('[data-lb]');
+  if(!img || state.editing) return;
+  // recolher todas as imagens visíveis na página
+  const all = Array.from(content.querySelectorAll('[data-lb]')).map(i => i.dataset.lb);
+  const idx = all.indexOf(img.dataset.lb);
+  openLightbox(all, idx >= 0 ? idx : 0);
+});
 </script>
 </body>
 </html>
