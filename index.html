@@ -638,8 +638,10 @@ function renderHome(){
 function renderBlocks(blocks){
   const LABEL_MAP = { warn:'Atenção', must:'Obrigatório', dont:'Não fazer', tip:'Dica' };
   let stepCount = 0;
-  const imgTag = (url, caption, title) =>
-    `<figure><img src="${esc(url)}" alt="${esc(caption||title||'')}" data-lb="${esc(url)}" loading="lazy">${caption?`<figcaption>${esc(caption)}</figcaption>`:''}</figure>`;
+  const imgTag = (url, caption, title) => {
+    if(url === '__uploading__') return `<figure><div class="img-placeholder" style="aspect-ratio:16/9">A carregar imagem…</div></figure>`;
+    return `<figure><img src="${esc(url)}" alt="${esc(caption||title||'')}" data-lb="${esc(url)}" loading="lazy" onerror="this.style.display='none'">${caption?`<figcaption>${esc(caption)}</figcaption>`:''}</figure>`;
+  };
 
   const out = blocks.map(b => {
     if(b.type === 'text') return b.html;
@@ -769,7 +771,7 @@ function imgField(b, i){
   const imgs = b.images && b.images.length ? b.images : (b.img ? [{url:b.img, caption:b.caption||''}] : []);
   let html = imgs.map((im, j) =>
     `<div class="ed-block" style="margin-bottom:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden">
-      <img class="thumb" src="${esc(im.url)}" alt="" style="max-height:180px">
+      ${im.url && im.url !== '__uploading__' ? `<img class="thumb" src="${esc(im.url)}" alt="" style="max-height:180px">` : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">A carregar…</div>`}
       <div class="ed-body" style="padding:8px 12px">
         <input class="field" style="font-size:13px;padding:7px 10px" placeholder="Legenda (opcional)"
           value="${esc(im.caption||'')}" data-imgcap="${i}" data-imgidx="${j}">
@@ -893,17 +895,34 @@ function pickImage(i, replaceIdx){
   inp.type = 'file'; inp.accept = 'image/*';
   inp.onchange = async () => {
     const f = inp.files[0]; if(!f) return;
-    const previewUrl = URL.createObjectURL(f);
+
+    // Mostrar estado de carregamento sem blob URL
     if(!a.blocks[i].images) a.blocks[i].images = a.blocks[i].img ? [{url:a.blocks[i].img, caption:a.blocks[i].caption||''}] : [];
-    if(replaceIdx !== undefined) a.blocks[i].images[replaceIdx] = {url:previewUrl, caption:''};
-    else a.blocks[i].images.push({url:previewUrl, caption:''});
-    renderEditor(); toast('A carregar imagem…');
+    const placeholder = '__uploading__';
+    if(replaceIdx !== undefined) a.blocks[i].images[replaceIdx] = {url:placeholder, caption:''};
+    else a.blocks[i].images.push({url:placeholder, caption:''});
+    const targetIdx = replaceIdx !== undefined ? replaceIdx : a.blocks[i].images.length - 1;
+    renderEditor();
+    toast('A carregar imagem…');
+
     try {
+      // Fazer upload e obter URL definitivo do Supabase Storage
       const url = await uploadImage(f);
-      const idx = replaceIdx !== undefined ? replaceIdx : a.blocks[i].images.length - 1;
-      a.blocks[i].images[idx].url = url;
-      renderEditor(); toast('Imagem guardada');
-    } catch(e){ toast('Erro no upload: ' + e.message); }
+
+      // Só agora actualizar com o URL real
+      a.blocks[i].images[targetIdx] = {url, caption:''};
+
+      // Guardar imediatamente na base de dados para não perder o URL
+      await dbPatch('pages', a.id, { blocks: a.blocks });
+
+      renderEditor();
+      toast('Imagem guardada');
+    } catch(e){
+      // Remover o placeholder em caso de erro
+      a.blocks[i].images.splice(targetIdx, 1);
+      renderEditor();
+      toast('Erro no upload: ' + e.message);
+    }
   };
   inp.click();
 }
